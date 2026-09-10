@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: vulnerability_tracker_db
+    environment:
+      POSTGRES_DB: vulnerability_tracker
+      POSTGRES_USER: vuln_user
+      POSTGRES_PASSWORD: vuln_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vuln_user -d vulnerability_tracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: vulnerability_tracker_api
+    environment:
+      POSTGRES_DB: vulnerability_tracker
+      POSTGRES_USER: vuln_user
+      POSTGRES_PASSWORD: vuln_password
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
