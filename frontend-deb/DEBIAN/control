@@ -2,7 +2,6 @@ Package: vulnerability-tracker
 Version: 1.0
 Section: utils
 Priority: optional
-Architecture: all
-Depends: python3, python3-tk
+Architecture: amd64
 Maintainer: Meriem Mornagui
 Description: Vulnerability Tracker frontend for the DBMS term project

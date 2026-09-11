@@ -8,3 +8,10 @@ out/
 *.toc
 *.synctex.gz
 __pycache__/
+# PyInstaller generated files
+build/
+dist/
+*.spec
+
+# Built Debian packages
+*.deb
