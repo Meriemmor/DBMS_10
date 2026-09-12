@@ -1,0 +1,425 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{thga-db}
+
+\renewcommand{\thgaKurs}{Databases}
+\renewcommand{\thgaDatum}{Summer Term 2026}
+
+\begin{document}
+\thispagestyle{empty}
+
+\thgaTitel{Term Project -- Documentation}%
+{Vulnerability Tracker: a database-backed vulnerability management system}
+
+\begin{infobox}
+\textbf{Author:} Meriem Mornagui \\
+\textbf{Module:} Introduction to Database Management Systems -- THGA Bochum \\
+\textbf{Stack:} PostgreSQL -- FastAPI -- Docker Compose -- tkinter (\texttt{.deb}) \\
+\textbf{Repository:} \url{https://github.com/Meriemmor/DBMS_10}
+\end{infobox}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+% ============================================================
+% ============================================================
+\section{Introduction and motivation}
+% ============================================================
+
+Modern IT systems may contain many assets and known security vulnerabilities.
+Keeping track of which vulnerability affects which asset, who is responsible
+for the affected system, and whether the issue has already been resolved can
+quickly become difficult when this information is maintained manually.
+
+The \textbf{Vulnerability Tracker} is a database-backed application for managing
+security findings in a structured way. It stores \textbf{teams},
+\textbf{assets}, \textbf{vulnerabilities}, and \textbf{findings}. A finding
+connects a vulnerability to an affected asset and records its current status,
+discovery date, due date, and, when applicable, resolution date.
+
+The system uses PostgreSQL for persistent data storage and exposes the data
+through a FastAPI REST API. A small tkinter desktop frontend communicates with
+the API and allows a user to inspect and manage vulnerability findings without
+accessing the database directly.
+
+\begin{beispielbox}
+\textbf{Usage scenario.} A security vulnerability is discovered on a server.
+The user opens the Vulnerability Tracker, identifies the affected asset and
+vulnerability, and creates a new finding. The responsible team can then track
+the finding from \texttt{Open} to \texttt{In Progress} and finally to
+\texttt{Resolved}. The summary view provides an overview of unresolved
+findings grouped by severity.
+\end{beispielbox}
+
+% ============================================================
+\section{Data model}
+% ============================================================
+
+The application manages four main entity types:
+\textbf{teams}, \textbf{assets}, \textbf{vulnerabilities}, and
+\textbf{findings}.
+
+A team can be responsible for several assets. An asset can be affected by many
+vulnerabilities, and one vulnerability can affect many assets. This creates an
+\texttt{N:M} relationship between \textbf{asset} and
+\textbf{vulnerability}. The relationship is resolved by the
+\textbf{finding} entity, which also stores information about the state of the
+vulnerability on the affected asset.
+
+\begin{beispielbox}
+\textbf{ER model (textual).}
+\begin{itemize}[leftmargin=1.4em, topsep=2pt]
+  \item \textbf{team} (1) \;--\; is responsible for \;--\; (N) \textbf{asset}
+  \item \textbf{asset} (1) \;--\; has \;--\; (N) \textbf{finding}
+  \item \textbf{vulnerability} (1) \;--\; appears in \;--\; (N) \textbf{finding}
+\end{itemize}
+
+Thus \textbf{asset} \texttt{N:M} \textbf{vulnerability}, resolved through
+\textbf{finding}.
+\end{beispielbox}
+
+\subsection{Relational schema}
+
+The relational schema derived from the ER model is:
+
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{team}(
+        \underline{id},
+        name,
+        contact\_email)
+
+  \item \texttt{asset}(
+        \underline{id},
+        name,
+        type,
+        \emph{team\_id})
+
+  \item \texttt{vulnerability}(
+        \underline{id},
+        cve\_id,
+        severity,
+        description)
+
+  \item \texttt{finding}(
+        \underline{id},
+        \emph{asset\_id},
+        \emph{vulnerability\_id},
+        status,
+        discovered\_on,
+        due\_date,
+        resolved\_on)
+\end{itemize}
+
+The foreign key \texttt{asset.team\_id} references \texttt{team.id}.
+The table \texttt{finding} references both \texttt{asset} and
+\texttt{vulnerability} and therefore implements the \texttt{N:M}
+relationship.
+
+\textbf{Normalisation.}
+The schema is in \textbf{third normal form (3NF)}. Attributes describing teams
+are stored only in \texttt{team}, asset-specific information is stored only in
+\texttt{asset}, and vulnerability information is stored only in
+\texttt{vulnerability}. The \texttt{finding} table stores only attributes that
+describe the relationship between an asset and a vulnerability.
+
+A unique constraint on \texttt{(asset\_id, vulnerability\_id)} prevents the
+same vulnerability from being assigned to the same asset more than once.
+
+% ============================================================
+\section{Database (PostgreSQL)}
+% ============================================================
+
+The database is implemented with PostgreSQL. The schema and initial test data
+are created automatically by the SQL script \texttt{db/init.sql}.
+
+The database contains the four tables described in the data model:
+\texttt{team}, \texttt{asset}, \texttt{vulnerability}, and
+\texttt{finding}.
+
+Several constraints are defined directly in PostgreSQL to ensure that invalid
+data cannot be stored.
+
+\begin{itemize}[leftmargin=1.4em]
+  \item The field \texttt{vulnerability.cve\_id} is unique.
+  \item The severity of a vulnerability must be one of
+        \texttt{Critical}, \texttt{High}, \texttt{Medium}, or \texttt{Low}.
+  \item The status of a finding must be one of
+        \texttt{Open}, \texttt{In Progress}, or \texttt{Resolved}.
+  \item The due date of a finding must not be earlier than its discovery date.
+  \item A finding marked as \texttt{Resolved} must contain a resolution date.
+        Unresolved findings must not contain one.
+  \item The combination of \texttt{asset\_id} and
+        \texttt{vulnerability\_id} is unique.
+\end{itemize}
+
+An excerpt from the SQL schema is shown below:
+
+\begin{verbatim}
+CREATE TABLE vulnerability (
+    id SERIAL PRIMARY KEY,
+    cve_id VARCHAR(50) NOT NULL UNIQUE,
+    severity VARCHAR(20) NOT NULL
+        CHECK (severity IN ('Critical', 'High', 'Medium', 'Low')),
+    description TEXT
+);
+
+CREATE TABLE finding (
+    id SERIAL PRIMARY KEY,
+    asset_id INTEGER NOT NULL REFERENCES asset(id),
+    vulnerability_id INTEGER NOT NULL REFERENCES vulnerability(id),
+    status VARCHAR(20) NOT NULL
+        CHECK (status IN ('Open', 'In Progress', 'Resolved')),
+    discovered_on DATE NOT NULL,
+    due_date DATE NOT NULL,
+    resolved_on DATE,
+
+    CHECK (due_date >= discovered_on),
+
+    UNIQUE (asset_id, vulnerability_id)
+);
+\end{verbatim}
+
+Foreign key constraints ensure referential integrity between the tables.
+PostgreSQL therefore prevents findings from referencing assets or
+vulnerabilities that do not exist.
+
+The database is started as part of the Docker Compose backend. During the first
+startup with an empty database volume, PostgreSQL executes the initialization
+script and creates the required tables and example records.
+
+% ============================================================
+\section{REST API (FastAPI)}
+% ============================================================
+
+The backend API is implemented with FastAPI. It provides access to the
+PostgreSQL database and is used by the desktop frontend to read and update
+vulnerability data.
+
+Read-only endpoints can be accessed without authentication. Endpoints that
+modify data require an API key sent in the HTTP header
+\texttt{X-API-Key}.
+
+The implemented endpoints are:
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Method} & \textbf{Endpoint} & \textbf{Purpose} \\
+\hline
+GET & \texttt{/findings} & List findings with optional filters \\
+GET & \texttt{/findings/\{id\}} & Return one finding \\
+GET & \texttt{/assets} & List assets \\
+GET & \texttt{/teams} & List teams \\
+GET & \texttt{/summary} & Show unresolved findings by severity \\
+POST & \texttt{/findings} & Create a new finding \\
+PATCH & \texttt{/findings/\{id\}} & Update an existing finding \\
+\hline
+\end{tabular}
+\end{center}
+
+The \texttt{/findings} endpoint combines data from multiple tables using SQL
+joins. Each returned finding therefore contains information about the affected
+asset, the responsible team, and the associated vulnerability.
+
+The endpoint also supports optional filtering by status and severity. This
+allows the frontend to request, for example, only open findings or only
+critical vulnerabilities.
+
+The \texttt{/summary} endpoint uses aggregation to count all unresolved
+findings grouped by severity. The result contains counts for
+\texttt{Critical}, \texttt{High}, \texttt{Medium}, and \texttt{Low}.
+
+Write operations are protected by a simple API-key mechanism. The client must
+send the correct key using the following request header:
+
+\begin{verbatim}
+X-API-Key: <api-key>
+\end{verbatim}
+
+If the API key is missing or invalid, the server rejects the request.
+
+FastAPI also performs input validation using Pydantic models before data is
+written to PostgreSQL. Invalid requests are therefore rejected before they can
+modify the database.
+
+% ============================================================
+\section{Frontend (tkinter, packaged as .deb)}
+% ============================================================
+
+The desktop frontend is implemented in Python using \texttt{tkinter}. It
+communicates exclusively with the FastAPI backend through HTTP requests and
+does not access PostgreSQL directly.
+
+When the application starts, a connection dialog is displayed. The user
+provides the URL of the FastAPI server and the API key that is required for
+write operations. After connecting, the main application window is opened.
+
+The frontend provides the following main functionality:
+
+\begin{itemize}[leftmargin=1.4em]
+  \item Load and display vulnerability findings from the API.
+  \item Display the summary of unresolved findings by severity.
+  \item Refresh the displayed data.
+  \item Create a new finding.
+  \item Update the status of an existing finding.
+\end{itemize}
+
+Read operations are performed through the frontend's API helper function
+\texttt{api\_get}. Operations that modify data use \texttt{api\_write} and
+include the configured \texttt{X-API-Key} header.
+
+For example, creating a finding opens a dialog in which the required finding
+information can be entered. The frontend then sends the data to the
+\texttt{POST /findings} endpoint. Updating the status of a finding uses the
+\texttt{PATCH /findings/\{id\}} endpoint.
+
+\subsection{Debian packaging}
+
+The frontend is distributed as a Debian package so that it can be installed
+as a normal application on the target Linux system.
+
+PyInstaller is used to bundle the Python application, its required modules,
+and the tkinter frontend into a standalone executable:
+
+\begin{verbatim}
+python3 -m PyInstaller \
+  --onefile \
+  --windowed \
+  --hidden-import=tkinter \
+  --name vulnerability-tracker \
+  frontend/app.py
+\end{verbatim}
+
+The resulting executable is placed in
+\texttt{frontend-deb/usr/bin/vulnerability-tracker}. The Debian package
+metadata is stored in \texttt{frontend-deb/DEBIAN/control}.
+
+The package is then built with:
+
+\begin{verbatim}
+dpkg-deb --build frontend-deb vulnerability-tracker_1.0_amd64.deb
+\end{verbatim}
+
+It can be installed on a compatible Debian-based system using:
+
+\begin{verbatim}
+sudo dpkg -i vulnerability-tracker_1.0_amd64.deb
+\end{verbatim}
+
+% ============================================================
+\section{Operation and deployment}
+% ============================================================
+
+The backend consists of two services: the PostgreSQL database and the FastAPI
+application. Both services are managed with Docker Compose.
+
+The system can be started from the project directory with:
+
+\begin{verbatim}
+docker compose up -d --build
+\end{verbatim}
+
+Docker Compose starts the PostgreSQL container and the FastAPI backend
+container. PostgreSQL stores the application data, while FastAPI provides the
+REST interface used by the frontend.
+
+The status of the containers can be checked with:
+
+\begin{verbatim}
+docker compose ps
+\end{verbatim}
+
+After startup, the API is available on port \texttt{8000}. The FastAPI
+documentation can be accessed through the automatically generated Swagger UI
+at:
+
+\begin{verbatim}
+http://<server-address>:8000/docs
+\end{verbatim}
+
+The desktop frontend is installed separately from the backend using the
+generated Debian package. After installation, the application can be started
+with:
+
+\begin{verbatim}
+vulnerability-tracker
+\end{verbatim}
+
+At startup, the user enters the backend URL and the API key in the connection
+dialog. The frontend then communicates with the FastAPI service through HTTP.
+
+For local development and testing, the complete backend has successfully been
+started using Docker Compose and the API endpoints have been tested against the
+PostgreSQL database.
+
+The final deployment target is the lecture server. The backend containers and
+the Debian frontend package will be installed and tested there before final
+submission.
+
+% ============================================================
+\section{Reflection}
+% ============================================================
+
+The project demonstrates how the different components of a database-backed
+application work together. The relational model provides a structured way to
+represent teams, assets, vulnerabilities, and findings, while PostgreSQL
+constraints help maintain data consistency.
+
+One important part of the project was implementing the relationship between
+assets and vulnerabilities through the \texttt{finding} table. This made it
+possible to represent the many-to-many relationship while also storing
+additional information such as status, discovery date, due date, and
+resolution date.
+
+The REST API provided practical experience with SQL joins, aggregation,
+validation, and protected write operations. Separating the FastAPI backend
+from the tkinter frontend also made the responsibilities of the different
+application layers clearer.
+
+Packaging the frontend was one of the more challenging parts of the project.
+The application was bundled as a standalone executable with PyInstaller and
+then packaged as a Debian package. This required ensuring that tkinter and the
+necessary Python components were included correctly.
+
+Overall, the project combines relational database design, SQL, REST APIs,
+Docker, and desktop application development into one complete system.
+
+% ============================================================
+\section*{Sources and reuse}
+% ============================================================
+
+The project was developed based on the concepts and examples presented in the
+DBMS course at THGA Bochum.
+
+\begin{itemize}[leftmargin=1.4em]
+  \item The relational database design, primary and foreign keys,
+        normalisation, constraints, joins, and aggregation are based on
+        concepts presented in the DBMS lectures and practical exercises.
+
+  \item The PostgreSQL initialization approach and Docker Compose structure
+        were adapted from examples used during the course and modified for the
+        Vulnerability Tracker data model.
+
+  \item The FastAPI backend structure and REST API concepts were adapted from
+        the course examples and extended with the endpoints, validation,
+        filtering, joins, aggregation, and API-key protection required by this
+        project.
+
+  \item The tkinter frontend and its communication with the REST API follow
+        the frontend concepts presented in the course. The interface was
+        adapted specifically for managing vulnerability findings.
+
+  \item The frontend packaging process follows the course material on
+        distributing Python desktop applications. PyInstaller is used to
+        create the standalone executable, which is then packaged as a Debian
+        package.
+\end{itemize}
+
+All database tables, application-specific API endpoints, validation rules,
+frontend functionality, and the Vulnerability Tracker domain model were
+implemented and adapted specifically for this term project.
+
+\addcontentsline{toc}{section}{Sources and reuse}
+
+\end{document}

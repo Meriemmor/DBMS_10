@@ -27,7 +27,7 @@ TEXENV   := TEXINPUTS="$(CURDIR)/style:.:$$TEXINPUTS"
 STYLE    := style/thga-db.sty
 
 # Let make find each .tex by its basename across the source directories.
-vpath %.tex src proposal-template example-documentation
+vpath %.tex src proposal-template documentation
 
 ## All documents to build (basename without .tex):
 DOCS     := dbms_10 proposal documentation
