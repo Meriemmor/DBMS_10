@@ -357,9 +357,16 @@ against the PostgreSQL database.
 In addition, automated API tests were implemented with \texttt{pytest}. The
 tests cover API availability, authentication with the \texttt{X-API-Key}
 header, request validation, joined finding data, severity aggregation, and an
-authenticated write request. The Debian frontend package was also built and
-installed successfully on a compatible Debian-based environment.
+authenticated write request.
 
+The graphical frontend was also tested successfully on a Windows system. It
+connected to the FastAPI backend running through Docker Compose at
+\texttt{localhost:8000} and displayed finding data retrieved from PostgreSQL.
+Both read and write operations were verified through the user interface. A new
+finding was created successfully and an existing finding was updated to the
+\texttt{Resolved} status. The summary view was refreshed accordingly. This
+verified the complete communication path from the tkinter frontend through the
+REST API to the PostgreSQL database.
 % ============================================================
 \section{Reflection}
 % ============================================================
