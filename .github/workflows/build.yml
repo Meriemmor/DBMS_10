@@ -10,6 +10,7 @@
 name: Build & Publish
 
 on:
+  workflow_dispatch:
   push:
     # Tag pushes (v*) build AND create a release; branch pushes only build,
     # so you notice breakage early (see the release step's `if:`).
