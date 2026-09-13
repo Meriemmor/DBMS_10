@@ -349,13 +349,16 @@ vulnerability-tracker
 At startup, the user enters the backend URL and the API key in the connection
 dialog. The frontend then communicates with the FastAPI service through HTTP.
 
-For local development and testing, the complete backend has successfully been
-started using Docker Compose and the API endpoints have been tested against the
-PostgreSQL database.
+For development and verification, the complete backend was successfully
+started using Docker Compose. The PostgreSQL and FastAPI containers were
+verified with \texttt{docker compose ps}, and the REST endpoints were tested
+against the PostgreSQL database.
 
-The final deployment target is the lecture server. The backend containers and
-the Debian frontend package will be installed and tested there before final
-submission.
+In addition, automated API tests were implemented with \texttt{pytest}. The
+tests cover API availability, authentication with the \texttt{X-API-Key}
+header, request validation, joined finding data, severity aggregation, and an
+authenticated write request. The Debian frontend package was also built and
+installed successfully on a compatible Debian-based environment.
 
 % ============================================================
 \section{Reflection}
