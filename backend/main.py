@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from typing import Literal
 
@@ -9,7 +10,7 @@ from database import get_connection
 
 app = FastAPI(title="Vulnerability Tracker API")
 
-API_KEY = "my_secret_api_key"
+API_KEY = os.environ["API_KEY"]
 
 
 class FindingCreate(BaseModel):
